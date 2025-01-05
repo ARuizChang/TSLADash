@@ -1,81 +1,326 @@
 document.addEventListener('DOMContentLoaded', function() {
     let stockData;
-
-    // Performance optimization: Debounce zoom function
-    function debounce(func, wait) {
-        let timeout;
-        return function(...args) {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => func.apply(this, args), wait);
-        };
-    }
+    let width;
+    let currentTimeRange = 'ALL';
 
     // Set up dimensions
     const margin = { 
-        top: 30, 
-        right: 70,
+        top: 40,
+        right: 90,
         bottom: 60,
-        left: 100 
+        left: 90
     };
     
     // Get container width
     const container = document.querySelector('#stockChart');
-    const containerWidth = container.clientWidth;
-    const width = containerWidth - margin.left - margin.right;
-    const height = 400 - margin.top - margin.bottom;
-    const volumeHeight = 100;
+    width = container.clientWidth - margin.left - margin.right;
+    const height = 500;
+    const volumeHeight = 150;
 
     // Create SVG containers
     const stockSvg = d3.select('#stockChart')
         .append('svg')
         .attr('width', width + margin.left + margin.right)
-        .attr('height', height + margin.top + margin.bottom)
-        .append('g')
+        .attr('height', height + margin.top + margin.bottom);
+
+    const stockGroup = stockSvg.append('g')
         .attr('transform', `translate(${margin.left},${margin.top})`);
 
     const volumeSvg = d3.select('#volumeChart')
         .append('svg')
         .attr('width', width + margin.left + margin.right)
-        .attr('height', volumeHeight + margin.top + margin.bottom)
-        .append('g')
+        .attr('height', volumeHeight + margin.top + margin.bottom);
+
+    const volumeGroup = volumeSvg.append('g')
         .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Create tooltip
+    const tooltip = d3.select('body').append('div')
+        .attr('class', 'tooltip')
+        .style('opacity', 0);
 
     // Create scales
     const xScale = d3.scaleTime().range([0, width]);
     const yScale = d3.scaleLinear().range([height, 0]);
     const volumeScale = d3.scaleLinear().range([volumeHeight, 0]);
 
-    // Create zoom behavior
+    // Add zoom behavior
     const zoom = d3.zoom()
-        .scaleExtent([1, 5])
+        .scaleExtent([1, 10])
         .extent([[0, 0], [width, height]])
         .on('zoom', zoomed);
 
-    // Add zoom behavior to stock chart
-    stockSvg.append('rect')
-        .attr('class', 'zoom-panel')
-        .attr('width', width)
-        .attr('height', height)
-        .style('fill', 'none')
-        .call(zoom);
+    stockSvg.call(zoom);
 
-    // Add clip path
-    stockSvg.append('defs').append('clipPath')
-        .attr('id', 'clip')
-        .append('rect')
-        .attr('width', width)
-        .attr('height', height);
+    function zoomed(event) {
+        const newXScale = event.transform.rescaleX(xScale);
+        stockGroup.selectAll('.line')
+            .attr('d', d3.line()
+                .x(d => newXScale(d.date))
+                .y(d => yScale(d.close))
+                .curve(d3.curveMonotoneX));
+                
+        stockGroup.selectAll('.area')
+            .attr('d', d3.area()
+                .x(d => newXScale(d.date))
+                .y0(height)
+                .y1(d => yScale(d.close))
+                .curve(d3.curveMonotoneX));
 
-    // Create groups for chart elements
-    const stockGroup = stockSvg.append('g')
-        .attr('clip-path', 'url(#clip)');
+        stockGroup.selectAll('.x-axis').call(d3.axisBottom(newXScale));
+        
+        // Update data points
+        stockGroup.selectAll('.data-point')
+            .attr('cx', d => newXScale(d.date));
+    }
+
+    // Add event listeners for filters
+    document.getElementById('timeRange').addEventListener('change', function(e) {
+        currentTimeRange = e.target.value;
+        filterData();
+    });
+
+    function filterData() {
+        if (!stockData) return;
+
+        let filteredData = [...stockData];
+        const now = new Date();
+
+        switch(currentTimeRange) {
+            case '1M':
+                filteredData = stockData.filter(d => 
+                    d.date >= d3.timeMonth.offset(now, -1));
+                break;
+            case '3M':
+                filteredData = stockData.filter(d => 
+                    d.date >= d3.timeMonth.offset(now, -3));
+                break;
+            case '6M':
+                filteredData = stockData.filter(d => 
+                    d.date >= d3.timeMonth.offset(now, -6));
+                break;
+            case '1Y':
+                filteredData = stockData.filter(d => 
+                    d.date >= d3.timeYear.offset(now, -1));
+                break;
+        }
+
+        updateCharts(filteredData);
+    }
+
+    function updateCharts(data = stockData) {
+        if (!data || data.length === 0) {
+            showError('No data available to display');
+            return;
+        }
+
+        // Clear previous content
+        stockGroup.selectAll('*').remove();
+        volumeGroup.selectAll('*').remove();
+
+        // Update scales
+        xScale.domain(d3.extent(data, d => d.date));
+        yScale.domain([
+            d3.min(data, d => d.low) * 0.95,
+            d3.max(data, d => d.high) * 1.05
+        ]);
+        volumeScale.domain([0, d3.max(data, d => d.volume)]);
+
+        // Add area
+        const area = d3.area()
+            .x(d => xScale(d.date))
+            .y0(height)
+            .y1(d => yScale(d.close))
+            .curve(d3.curveMonotoneX);
+
+        stockGroup.append('path')
+            .datum(data)
+            .attr('class', 'area')
+            .attr('d', area);
+
+        // Add line
+        const line = d3.line()
+            .x(d => xScale(d.date))
+            .y(d => yScale(d.close))
+            .curve(d3.curveMonotoneX);
+
+        stockGroup.append('path')
+            .datum(data)
+            .attr('class', 'line')
+            .attr('d', line);
+
+        // Add data points
+        stockGroup.selectAll('.data-point')
+            .data(data)
+            .enter()
+            .append('circle')
+            .attr('class', 'data-point')
+            .attr('cx', d => xScale(d.date))
+            .attr('cy', d => yScale(d.close))
+            .attr('r', 3)
+            .on('mouseover', function(event, d) {
+                d3.select(this)
+                    .transition()
+                    .duration(200)
+                    .attr('r', 6);
+
+                tooltip.transition()
+                    .duration(200)
+                    .style('opacity', .9);
+                    
+                tooltip.html(`
+                    <div class="tooltip-date">${d3.timeFormat("%B %d, %Y")(d.date)}</div>
+                    <div class="tooltip-price">
+                        <div>Open: $${d.open.toFixed(2)}</div>
+                        <div>High: $${d.high.toFixed(2)}</div>
+                        <div>Low: $${d.low.toFixed(2)}</div>
+                        <div>Close: $${d.close.toFixed(2)}</div>
+                        <div>Volume: ${d3.format(",")(d.volume)}</div>
+                    </div>
+                `)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+            })
+            .on('mouseout', function() {
+                d3.select(this)
+                    .transition()
+                    .duration(200)
+                    .attr('r', 3);
+                    
+                tooltip.transition()
+                    .duration(500)
+                    .style('opacity', 0);
+            });
+
+        // Add axes
+        const xAxis = d3.axisBottom(xScale)
+            .ticks(width > 800 ? 10 : 5)
+            .tickFormat(d3.timeFormat("%b %d, %Y"));
+
+        const yAxis = d3.axisLeft(yScale)
+            .tickFormat(d => `$${d3.format(",.2f")(d)}`);
+
+        stockGroup.append('g')
+            .attr('class', 'x-axis')
+            .attr('transform', `translate(0,${height})`)
+            .call(xAxis)
+            .selectAll('text')
+            .style('text-anchor', 'end')
+            .attr('dx', '-.8em')
+            .attr('dy', '.15em')
+            .attr('transform', 'rotate(-45)');
+
+        stockGroup.append('g')
+            .attr('class', 'y-axis')
+            .call(yAxis);
+
+        // Add labels
+        stockGroup.append('text')
+            .attr('class', 'y-axis-label')
+            .attr('transform', 'rotate(-90)')
+            .attr('y', -margin.left + 20)
+            .attr('x', -height/2)
+            .attr('text-anchor', 'middle')
+            .text('Price (USD)');
+
+        // Add volume bars
+        volumeGroup.selectAll('.volume-bar')
+            .data(data)
+            .enter()
+            .append('rect')
+            .attr('class', 'volume-bar')
+            .attr('x', d => xScale(d.date))
+            .attr('y', d => volumeScale(d.volume))
+            .attr('width', Math.max(1, width / data.length * 0.8))
+            .attr('height', d => volumeHeight - volumeScale(d.volume))
+            .attr('fill', (d, i) => {
+                if (i === 0) return '#90CAF9';
+                return d.close > data[i - 1].close ? '#4CAF50' : '#EF5350';
+            });
+
+        // Add volume axes
+        volumeGroup.append('g')
+            .attr('class', 'x-axis')
+            .attr('transform', `translate(0,${volumeHeight})`)
+            .call(d3.axisBottom(xScale)
+                .ticks(width > 800 ? 10 : 5)
+                .tickFormat(d3.timeFormat("%b %d, %Y")))
+            .selectAll('text')
+            .style('text-anchor', 'end')
+            .attr('dx', '-.8em')
+            .attr('dy', '.15em')
+            .attr('transform', 'rotate(-45)');
+
+        volumeGroup.append('g')
+            .attr('class', 'y-axis')
+            .call(d3.axisLeft(volumeScale)
+                .tickFormat(d => {
+                    const format = d3.format('.2s');
+                    return format(d).replace(/G/, 'B');
+                }));
+
+        // Add volume label
+        volumeGroup.append('text')
+            .attr('class', 'y-axis-label')
+            .attr('transform', 'rotate(-90)')
+            .attr('y', -margin.left + 20)
+            .attr('x', -volumeHeight/2)
+            .attr('text-anchor', 'middle')
+            .text('Volume');
+
+        updateStockInfo(data);
+    }
+
+    function showLoading() {
+        const chartContainer = document.querySelector('.chart-container');
+        const existingOverlay = chartContainer.querySelector('.loading-overlay');
+        if (!existingOverlay) {
+            const overlay = document.createElement('div');
+            overlay.className = 'loading-overlay';
+            overlay.innerHTML = `
+                <div class="loading"></div>
+                <div class="loading-text">Loading data...</div>
+            `;
+            chartContainer.appendChild(overlay);
+        }
+    }
+
+    function hideLoading() {
+        const overlay = document.querySelector('.loading-overlay');
+        if (overlay) {
+            overlay.remove();
+        }
+    }
+
+    function showError(message) {
+        const chartContainer = document.querySelector('.chart-container');
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = message;
+        
+        const existingError = chartContainer.querySelector('.error-message');
+        if (existingError) {
+            existingError.remove();
+        }
+        
+        chartContainer.appendChild(errorDiv);
+    }
 
     async function fetchData() {
         try {
+            showLoading();
             const response = await fetch('/api/tesla-data');
-            if (!response.ok) throw new Error('Network response was not ok');
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
             
             const data = await response.json();
+            
+            if (!data || data.length === 0) {
+                throw new Error('No data received');
+            }
+
             stockData = data.map(d => ({
                 date: new Date(d.date),
                 open: +d.open,
@@ -85,182 +330,56 @@ document.addEventListener('DOMContentLoaded', function() {
                 volume: +d.volume
             })).sort((a, b) => a.date - b.date);
 
+            console.log('Data loaded:', stockData.length, 'records');
             updateCharts();
+            
         } catch (error) {
-            console.error('Error:', error);
-            showError('Failed to load data');
+            console.error('Error loading data:', error);
+            showError(`Failed to load data: ${error.message}`);
+        } finally {
+            hideLoading();
         }
     }
 
-    function updateCharts() {
-        // Update scales
-        xScale.domain(d3.extent(stockData, d => d.date));
-        yScale.domain([
-            d3.min(stockData, d => d.low) * 0.95,
-            d3.max(stockData, d => d.high) * 1.05
-        ]);
-        volumeScale.domain([0, d3.max(stockData, d => d.volume)]);
+    function updateStockInfo(data = stockData) {
+        if (!data || data.length < 2) return;
 
-        // Create line generator
-        const line = d3.line()
-            .x(d => xScale(d.date))
-            .y(d => yScale(d.close));
-
-        // Create area generator
-        const area = d3.area()
-            .x(d => xScale(d.date))
-            .y0(height)
-            .y1(d => yScale(d.close));
-
-        // Update stock chart
-        stockGroup.selectAll('*').remove();
+        const latest = data[data.length - 1];
+        const prev = data[data.length - 2];
         
-        // Add area
-        stockGroup.append('path')
-            .datum(stockData)
-            .attr('class', 'area')
-            .attr('d', area);
+        document.getElementById('currentPrice').innerHTML = `
+            <div class="info-label">Current Price</div>
+            <div class="info-value">$${latest.close.toFixed(2)}</div>
+        `;
 
-        // Add line
-        stockGroup.append('path')
-            .datum(stockData)
-            .attr('class', 'line')
-            .attr('d', line);
-
-        // Add axes
-        stockSvg.selectAll('.axis').remove();
+        const change = latest.close - prev.close;
+        const percentChange = (change / prev.close) * 100;
         
-        stockSvg.append('g')
-            .attr('class', 'x-axis axis')
-            .attr('transform', `translate(0,${height})`)
-            .call(d3.axisBottom(xScale));
-
-        stockSvg.append('g')
-            .attr('class', 'y-axis axis')
-            .call(d3.axisLeft(yScale));
-
-        // Update volume chart
-        volumeSvg.selectAll('*').remove();
-
-        volumeSvg.selectAll('rect')
-            .data(stockData)
-            .enter()
-            .append('rect')
-            .attr('class', 'volume-bar')
-            .attr('x', d => xScale(d.date))
-            .attr('y', d => volumeScale(d.volume))
-            .attr('width', width / stockData.length * 0.8)
-            .attr('height', d => volumeHeight - volumeScale(d.volume));
-
-        volumeSvg.append('g')
-            .attr('class', 'x-axis axis')
-            .attr('transform', `translate(0,${volumeHeight})`)
-            .call(d3.axisBottom(xScale));
-
-        volumeSvg.append('g')
-            .attr('class', 'y-axis axis')
-            .call(d3.axisLeft(volumeScale));
-
-        // Update stock information
-        updateStockInfo();
+        document.getElementById('priceChange').innerHTML = `
+            <div class="info-label">Change</div>
+            <div class="info-value ${change >= 0 ? 'positive' : 'negative'}">
+                ${change >= 0 ? '+' : ''}$${Math.abs(change).toFixed(2)} 
+                (${change >= 0 ? '+' : ''}${percentChange.toFixed(2)}%)
+            </div>
+        `;
+        
+        document.getElementById('volume').innerHTML = `
+            <div class="info-label">Volume</div>
+            <div class="info-value">${latest.volume.toLocaleString()}</div>
+        `;
     }
-
-    function zoomed(event) {
-        const newX = event.transform.rescaleX(xScale);
-        const newY = event.transform.rescaleY(yScale);
-
-        // Update axes
-        stockSvg.select('.x-axis').call(d3.axisBottom(newX));
-        stockSvg.select('.y-axis').call(d3.axisLeft(newY));
-
-        // Update line and area
-        stockGroup.select('.line')
-            .attr('d', d3.line()
-                .x(d => newX(d.date))
-                .y(d => newY(d.close))
-            );
-
-        stockGroup.select('.area')
-            .attr('d', d3.area()
-                .x(d => newX(d.date))
-                .y0(height)
-                .y1(d => newY(d.close))
-            );
-    }
-
-    // Add reset zoom button
-    d3.select('#stockChart')
-        .append('button')
-        .attr('class', 'zoom-reset')
-        .text('Reset Zoom')
-        .on('click', () => {
-            stockSvg.transition()
-                .duration(750)
-                .call(zoom.transform, d3.zoomIdentity);
-        });
 
     // Initialize
     fetchData();
 
-    // Handle window resize
-    window.addEventListener('resize', debounce(() => {
-        const newWidth = container.clientWidth - margin.left - margin.right;
-        
-        // Update SVG dimensions
-        d3.select('#stockChart svg')
-            .attr('width', newWidth + margin.left + margin.right);
-        
-        d3.select('#volumeChart svg')
-            .attr('width', newWidth + margin.left + margin.right);
-
-        // Update scales
-        xScale.range([0, newWidth]);
-        
-        // Update charts
-        updateCharts();
-    }, 250));
-
-    // Add this new function to update stock information
-    function updateStockInfo() {
-        const latestData = stockData[stockData.length - 1];
-        const previousData = stockData[stockData.length - 2];
-        
-        const priceChange = latestData.close - previousData.close;
-        const percentChange = (priceChange / previousData.close) * 100;
-        
-        // Format numbers
-        const formatPrice = d3.format("$,.2f");
-        const formatPercent = d3.format("+.2f");
-        const formatVolume = d3.format(",.0f");
-        
-        // Update current price
-        document.getElementById('currentPrice').innerHTML = `
-            <div class="info-label">Current Price</div>
-            <div class="info-value">${formatPrice(latestData.close)}</div>
-        `;
-        
-        // Update price change
-        const priceChangeElement = document.getElementById('priceChange');
-        priceChangeElement.innerHTML = `
-            <div class="info-label">Change (24h)</div>
-            <div class="info-value">
-                ${formatPrice(priceChange)} (${formatPercent(percentChange)}%)
-            </div>
-        `;
-        priceChangeElement.className = `price-change ${priceChange >= 0 ? 'positive' : 'negative'}`;
-        
-        // Update volume
-        document.getElementById('volume').innerHTML = `
-            <div class="info-label">Volume</div>
-            <div class="info-value">${formatVolume(latestData.volume)}</div>
-        `;
-
-        // Add high/low information
-        document.getElementById('highLow').innerHTML = `
-            <div class="info-label">Day Range</div>
-            <div class="info-value">
-                ${formatPrice(latestData.low)} - ${formatPrice(latestData.high)}
-            </div>
-        `;
-    }
+    // Add window resize handler
+    window.addEventListener('resize', () => {
+        width = container.clientWidth - margin.left - margin.right;
+        stockSvg.attr('width', width + margin.left + margin.right);
+        volumeSvg.attr('width', width + margin.left + margin.right);
+        xScale.range([0, width]);
+        if (stockData) {
+            updateCharts();
+        }
+    });
 }); 

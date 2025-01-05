@@ -24,24 +24,16 @@
                             <option value="1M">1 Month</option>
                             <option value="3M">3 Months</option>
                             <option value="6M">6 Months</option>
-                            <option value="1Y" selected>1 Year</option>
+                            <option value="1Y">1 Year</option>
                             <option value="ALL">All Time</option>
                         </select>
                     </div>
-                    <div class="filter-group">
-                        <label for="indicator">Technical Indicator:</label>
-                        <select id="indicator">
-                            <option value="none">None</option>
-                            <option value="sma">SMA</option>
-                            <option value="ema">EMA</option>
-                        </select>
-                    </div>
                 </div>
+
                 <div class="stock-info">
                     <h3>Stock Information</h3>
                     <div id="currentPrice"></div>
                     <div id="priceChange"></div>
-                    <div id="highLow"></div>
                     <div id="volume"></div>
                 </div>
             </aside>
@@ -57,10 +49,6 @@
                 </div>
             </main>
         </div>
-
-        <footer>
-            <p>Data Source: <a href="https://www.kaggle.com/datasets/simronw/tesla-stock-data-2024" target="_blank" rel="noopener noreferrer">Tesla Stock Data 2024 (Kaggle)</a> | Created with D3.js</p>
-        </footer>
     </div>
     <script src="js/dashboard.js"></script>
 </body>
