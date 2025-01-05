@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tesla Stock Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Tesla Stock Analysis Dashboard</h1>
+            <p>Interactive visualization of Tesla stock performance</p>
+        </header>
+
+        <div class="main-content">
+            <aside class="sidebar">
+                <div class="filters">
+                    <h3>Filters</h3>
+                    <div class="filter-group">
+                        <label for="timeRange">Time Range:</label>
+                        <select id="timeRange">
+                            <option value="1M">1 Month</option>
+                            <option value="3M">3 Months</option>
+                            <option value="6M">6 Months</option>
+                            <option value="1Y" selected>1 Year</option>
+                            <option value="ALL">All Time</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="indicator">Technical Indicator:</label>
+                        <select id="indicator">
+                            <option value="none">None</option>
+                            <option value="sma">SMA</option>
+                            <option value="ema">EMA</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="stock-info">
+                    <h3>Stock Information</h3>
+                    <div id="currentPrice"></div>
+                    <div id="priceChange"></div>
+                    <div id="highLow"></div>
+                    <div id="volume"></div>
+                </div>
+            </aside>
+
+            <main class="charts">
+                <div class="chart-container">
+                    <h2>Stock Price History</h2>
+                    <div id="stockChart"></div>
+                </div>
+                <div class="chart-container">
+                    <h2>Volume Analysis</h2>
+                    <div id="volumeChart"></div>
+                </div>
+            </main>
+        </div>
+
+        <footer>
+            <p>Data Source: <a href="https://www.kaggle.com/datasets/simronw/tesla-stock-data-2024" target="_blank" rel="noopener noreferrer">Tesla Stock Data 2024 (Kaggle)</a> | Created with D3.js</p>
+        </footer>
+    </div>
+    <script src="js/dashboard.js"></script>
+</body>
+</html> 
